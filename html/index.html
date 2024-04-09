@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lockpicking Minigame</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+<style>
+body, html {
+    height: 100%;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+#gameContainer {
+    position: relative;
+    text-align: center;
+    margin-top: 60vh;
+}
+.circle {
+    stroke: url(#scanlinePattern);
+}
+.target-area {
+    fill: none;
+    stroke: url(#scanlinePattern);
+    stroke-width: 4;
+    opacity: 0.75;
+    filter: drop-shadow(0 0 4px rgb(0, 0, 0));
+}
+#iconContainer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 8vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    line-height: 1;
+}
+#filledIcon {
+    /*color: rgba(255, 255, 255, 0.7);*/
+    position: absolute;
+    clip-path: polygon(0 100%, 100% 100%, 100% 100%, 0 100%);
+    transition: clip-path 0.8s ease;
+}
+#filledIcon::before {
+    color: transparent;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.8) 50%, transparent 50%),
+                      linear-gradient(to right, #0f0 0%, #000 0%);
+    background-size: 100% 4px, 100% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    display: inline;
+}
+
+#maskIcon {
+    color: rgba(100, 100, 100, 0.5);
+}
+#gameContainer {
+    display: none; /* Hide the game initially */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+#gameSVG {
+    flex-shrink: 0;
+    width: 30vh;
+    height: 30vh;
+}
+/* Success glow effect */
+.success-glow {
+    stroke: rgb(0, 255, 0); /* Success color */
+    filter: drop-shadow(0 0 8px rgb(0, 255, 0));
+}
+
+.failure-glow {
+    stroke: rgb(255, 0, 0); /* Failure color */
+    filter: drop-shadow(0 0 8px rgb(255, 0, 0));
+}
+
+</style>
+</head>
+<body>
+    <div id="gameContainer" margin-top="10vh">
+        <div id="iconContainer">
+            <i id="filledIcon" class="fas fa-wrench"></i>
+            <i id="maskIcon" class="fas fa-wrench"></i>
+        </div>
+        <svg id="gameSVG" viewBox="0 0 200 200" width="200px" height="200px" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <pattern id="scanlinePattern" width="4" height="4" patternUnits="userSpaceOnUse">
+                    <rect width="4" height="1" fill="rgb(0, 0, 0)"></rect>
+                    <rect y="1" width="4" height="3" fill="rgb(255, 255, 255)"></rect>
+                </pattern>
+                <radialGradient id="fadeEdgeGradient" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                    <stop offset="90%" stop-color="rgba(0, 0, 0, 0.5)" />
+                    <stop offset="100%" stop-color="rgba(0, 0, 0, 0)" />
+                </radialGradient>
+            </defs>
+            <circle cx="100" cy="100" r="48" fill="url(#fadeEdgeGradient)" />
+            <circle cx="100" cy="100" r="40" stroke="rgba(50, 50, 50, 0.5)" stroke-width="2" fill="none" stroke-dasharray="2,1" />
+            <path id="marker" d="M100,60 L97,50 L103,50 Z" fill="white" />
+            <polyline id="targetArea" class="target-area" points=""/>
+        </svg>
+    </div>
+<script>
+let targetArea = document.getElementById('targetArea');
+let angle = 0;
+let currentStep = 1;
+let totalSteps = 3;
+let gameInterval = 0;
+let markerSpeed = 10;
+let style = "easy";
+let dir = true;
+
+function updateProgress(step, totalSteps) {
+    const filledIcon = document.getElementById('filledIcon');
+    let fillPercentage;
+    if (step >= totalSteps) {
+        fillPercentage = 101;
+    } else {
+        fillPercentage = ((step / totalSteps) * 100).toFixed(0);
+    }
+    filledIcon.style.clipPath = `polygon(0 ${100 - fillPercentage}%, 100% ${100 - fillPercentage}%, 100% 100%, 0 100%)`;
+}
+function transitionTargetArea(newStartAngle, newEndAngle, duration) {
+    const start = performance.now();
+    const initialStartAngle = currentStartAngle;
+    const initialEndAngle = currentEndAngle;
+    const angleChangeStart = newStartAngle - initialStartAngle;
+    const angleChangeEnd = newEndAngle - initialEndAngle;
+
+    function update(time) {
+        const elapsed = time - start;
+        const progress = Math.min(elapsed / duration, 1);
+
+        const currentStart = initialStartAngle + (angleChangeStart * progress);
+        const currentEnd = initialEndAngle + (angleChangeEnd * progress);
+        updateTargetArea(currentStart, currentEnd);
+
+        if (progress < 1) {
+            requestAnimationFrame(update);
+        } else {
+            currentStartAngle = newStartAngle;
+            currentEndAngle = newEndAngle;
+        }
+    }
+
+    requestAnimationFrame(update);
+}
+let currentStartAngle = 0;
+let currentEndAngle = 0;
+
+function generateTargetArea() {
+    let targetStartAngle = Math.floor(Math.random() * 200) + 20;
+    let angleSpan = Math.floor(Math.random() * 40) + 20;
+
+    let targetEndAngle = targetStartAngle + angleSpan;
+
+    targetStartAngle = normalizeAngle(targetStartAngle);
+    targetEndAngle = normalizeAngle(targetEndAngle);
+
+    transitionTargetArea(targetStartAngle, targetEndAngle, 400);
+}
+
+// Normalizes an angle to the 0 - 360 range
+function normalizeAngle(angle) {
+    return ((angle % 360) + 360) % 360;
+}
+
+function updateTargetArea(targetStartAngle, targetEndAngle) {
+    const points = [];
+    const outerRadius = 40;
+    for (let a = targetStartAngle; a <= targetEndAngle; a += 5) {
+        const radians = (a - 90) * (Math.PI / 180);
+        points.push([
+        100 + outerRadius * Math.cos(radians),
+        100 + outerRadius * Math.sin(radians)
+        ].join(','));
+    }
+    targetArea.setAttribute('points', points.join(' '));
+}
+
+function rotateMarker() {
+    angle = dir ? (angle + 1) % 360 : (angle - 1 + 360) % 360;
+    document.getElementById('marker').setAttribute('transform', `rotate(${angle}, 100, 100)`);
+    if (style === "hard" && angle === 0) { failGame();}
+}
+function failGame() {
+    sendSoundMessage(false);
+    clearInterval(gameInterval);
+    targetArea.classList.add('failure-glow');
+    document.getElementById('filledIcon').style.color = "rgba(255, 0, 0, 0.7)";
+
+    timeoutActive = true; // Prevent further actions
+    setTimeout(function() {
+        targetArea.classList.remove('failure-glow');
+        document.getElementById('gameContainer').style.display = 'none';
+        timeoutActive = false;
+        sendNuiMessage(false);
+    }, 500);
+}
+var timeoutActive = false;
+function checkKeyPress(event) {
+    if (event.key.toLowerCase() === "e") {
+        if (timeoutActive) return;
+
+        const targetArea = document.getElementById('targetArea');
+        const marker = document.getElementById('marker');;
+        targetArea.classList.remove('success-glow', 'failure-glow');
+        marker.classList.remove('success-glow', 'failure-glow');
+
+        const points = targetArea.getAttribute('points').split(' ')[0].split(',');
+        const targetStartAngle = Math.atan2(points[1] - 100, points[0] - 100) * (180 / Math.PI) + 90;
+        const targetEndAngle = targetStartAngle + (targetArea.getAttribute('points').split(' ').length - 1) * 5;
+        const adjustedAngle = angle < 0 ? angle + 360 : angle;
+        if ((adjustedAngle + 5) >= targetStartAngle && (adjustedAngle - 5) <= targetEndAngle) {
+            if (currentStep < totalSteps) {
+                sendSoundMessage(true);
+                clearInterval(gameInterval);
+                targetArea.classList.add('success-glow');
+                marker.classList.add('success-glow');
+                updateProgress(currentStep, totalSteps);
+                timeoutActive = true;
+                if (style === "hard") {
+                    angle = 1; document.getElementById('marker').setAttribute('transform', `rotate(1, 100, 100)`);
+                    setTimeout(function() {
+                    }, 500)
+                }
+                setTimeout(function() {
+                    targetArea.classList.remove('success-glow');
+                    marker.classList.remove('success-glow');
+                    currentStep++;
+                    if (style === "swap") { dir = !dir; }
+                    generateTargetArea();
+                    gameInterval = setInterval(rotateMarker, markerSpeed || 10);
+                    timeoutActive = false;
+                }, 1000);
+            } else {
+                sendSoundMessage(true);
+                targetArea.classList.add('success-glow');
+                marker.classList.add('success-glow');
+                updateProgress(currentStep, totalSteps);
+                clearInterval(gameInterval);
+                timeoutActive = true;
+                setTimeout(function() {
+                    targetArea.classList.remove('success-glow');
+                    marker.classList.remove('success-glow');
+                    sendNuiMessage(true);
+                    document.getElementById('gameContainer').style.display = 'none';
+                    timeoutActive = false;
+                }, 1000)
+            }
+        } else {
+            sendSoundMessage(false);
+            clearInterval(gameInterval);
+            targetArea.classList.add('failure-glow');
+            marker.classList.add('failure-glow');
+            document.getElementById('filledIcon').style.color = "rgba(255, 0, 0, 0.7)";
+
+            timeoutActive = true;
+            setTimeout(function() {
+                targetArea.classList.remove('failure-glow');
+                marker.classList.remove('failure-glow');
+                document.getElementById('gameContainer').style.display = 'none';
+                timeoutActive = false;
+                sendNuiMessage(false);
+            }, 500);
+        }
+    }
+}
+
+
+document.addEventListener('keydown', checkKeyPress);
+function startGame() {
+    currentStep = 1;
+    generateTargetArea();
+}
+
+function sendNuiMessage(result) {
+    fetch(`https://${GetParentResourceName()}/gameResult`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: JSON.stringify({
+            result: result
+        })
+    }).then(resp => resp.json()).then(resp => console.log(resp));
+}
+function sendSoundMessage(result) {
+    fetch(`https://${GetParentResourceName()}/playSound`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: JSON.stringify({
+            result: result
+        })
+    }).then(resp => resp.json()).then(resp => console.log(resp));
+}
+
+window.addEventListener('message', function(event) {
+    var item = event.data;
+    if (item.type === "showGame") {
+        //console.log("Steps " + item.totalSteps, "Speed " + item.markerSpeed, "Icon " + item.icon)
+        angle = 0;
+        transitionTargetArea(40, 320, 0);
+        document.getElementById('marker').setAttribute('transform', `rotate(0, 100, 100)`);
+        currentStep = 1;
+        document.getElementById('gameContainer').style.display = 'flex';
+        totalSteps = item.totalSteps || 3;
+        markerSpeed = item.markerSpeed;
+        clearInterval(gameInterval);
+        var filledIcon = document.getElementById('filledIcon');
+        var maskIcon = document.getElementById('maskIcon');
+        filledIcon.className = maskIcon.className = "";
+        if (item.icon) {
+            filledIcon.className = maskIcon.className = item.icon;
+        }
+        if (item.iconCol) {
+            document.getElementById('filledIcon').style.color = item.iconCol;
+        } else {
+            // Set to default color if no specific color provided
+            document.getElementById('filledIcon').style.color = "rgba(255, 255, 255, 0.7)";
+        }
+
+        style = item.mode || "easy";
+        updateProgress(0, totalSteps);
+        setTimeout(function() {
+            gameInterval = setInterval(rotateMarker, markerSpeed || 10);
+        }, 1000)
+        startGame();
+    }
+});
+//document.getElementById('gameContainer').style.display = 'flex';
+//updateProgress(0, totalSteps);
+//setTimeout(function() { gameInterval = setInterval(rotateMarker, markerSpeed || 10);}, 1000)
+startGame();
+</script>
+</body>
+</html>
